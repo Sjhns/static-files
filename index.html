@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MediControl - Gestão de Medicamentos para Idosos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <!-- Chosen Palette: Warm Neutrals & Calming Teal -->
+    <!-- Primary: #0D9488 (Teal-600) - For actions and headers -->
+    <!-- Background: #FFF7ED (Orange-50) - Warm, paper-like background for comfort -->
+    <!-- Text: #1F2937 (Gray-800) - High contrast for readability -->
+    <!-- Accent: #F59E0B (Amber-500) - For highlights and alerts -->
+
+    <!-- Application Structure Plan: 
+         The app is structured to prioritize the daily routine over data entry.
+         1. Header: Clear branding and date.
+         2. Dashboard Overview: A visual summary (Chart) of daily progress to encourage adherence.
+         3. Daily Schedule (Main View): The core interactive element. Divided into 4 distinct time blocks (Morning, Lunch, Afternoon, Night) to solve the "6+ meds" spacing issue. Each block expands to fit content.
+         4. Medication Manager: A separate section to add/remove drugs from the regimen, keeping the daily view clean.
+         5. Table Reference: A digital version of the original markdown table request for a consolidated list view.
+         Why this structure? It separates the "setup" (adding meds) from the "execution" (taking meds), preventing clutter and confusion for elderly users.
+    -->
+
+    <!-- Visualization & Content Choices:
+         1. Adherence Chart (Chart.js): 
+            - Goal: Inform user of daily progress.
+            - Viz: Donut chart. Simple, readable at a glance.
+            - Interaction: Updates automatically as checkboxes are clicked.
+         2. Time Cards (HTML/Tailwind):
+            - Goal: Organize the day.
+            - Viz: Distinct cards for Morning/Lunch/Afternoon/Night.
+            - Interaction: Checkboxes to toggle 'taken' state.
+            - Justification: Solves the space constraint of physical tables by growing vertically.
+         3. Add Form (HTML Form):
+            - Goal: Data entry.
+            - Viz: Clean input fields with clear labels.
+            - Interaction: Adds object to state and refreshes UI.
+    -->
+
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #FFF7ED; /* Warm neutral background */
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 400px;
+            height: 300px;
+            margin: 0 auto;
+        }
+        /* Custom scrollbar for better aesthetics */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8; 
+        }
+    </style>
+</head>
+<body class="text-gray-800 flex flex-col min-h-screen">
+
+    <!-- Header Section -->
+    <header class="bg-teal-700 text-white shadow-lg">
+        <div class="container mx-auto px-4 py-6">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                <div>
+                    <h1 class="text-3xl font-bold"><i class="fas fa-pills mr-2"></i>MediControl</h1>
+                    <p class="text-teal-100 mt-1">Controle Diário e Seguro de Medicamentos</p>
+                </div>
+                <div class="mt-4 md:mt-0 text-right">
+                    <div id="current-date" class="text-xl font-semibold"></div>
+                    <div class="text-sm text-teal-200">Hoje é um ótimo dia para se cuidar.</div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-grow container mx-auto px-4 py-8 space-y-12">
+
+        <!-- Introduction & Overview Section -->
+        <section class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div class="lg:col-span-2 space-y-4">
+                <div class="bg-white p-6 rounded-xl shadow-md border-l-4 border-teal-500">
+                    <h2 class="text-2xl font-bold text-teal-800 mb-3">Bem-vindo ao seu Painel de Saúde</h2>
+                    <p class="text-gray-600 leading-relaxed">
+                        Este aplicativo foi desenvolvido para resolver o desafio de organizar múltiplos medicamentos. 
+                        Diferente de tabelas de papel que ficam sem espaço, aqui você pode adicionar quantos medicamentos forem necessários para cada período do dia (Manhã, Almoço, Tarde e Noite).
+                        Use os botões abaixo para marcar o que já tomou e acompanhe seu progresso no gráfico ao lado.
+                    </p>
+                </div>
+                
+                <!-- Stats Cards -->
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div class="bg-white p-4 rounded-lg shadow text-center">
+                        <div class="text-3xl font-bold text-teal-600" id="total-meds-count">0</div>
+                        <div class="text-sm text-gray-500">Medicamentos Hoje</div>
+                    </div>
+                    <div class="bg-white p-4 rounded-lg shadow text-center">
+                        <div class="text-3xl font-bold text-amber-500" id="pending-count">0</div>
+                        <div class="text-sm text-gray-500">Pendentes</div>
+                    </div>
+                    <div class="bg-white p-4 rounded-lg shadow text-center">
+                        <div class="text-3xl font-bold text-green-600" id="taken-count">0</div>
+                        <div class="text-sm text-gray-500">Tomados</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Adherence Chart -->
+            <div class="bg-white p-6 rounded-xl shadow-md flex flex-col items-center justify-center">
+                <h3 class="text-lg font-semibold text-gray-700 mb-4">Progresso Diário</h3>
+                <div class="chart-container">
+                    <canvas id="adherenceChart"></canvas>
+                </div>
+                <p class="text-xs text-gray-400 mt-2 text-center">O gráfico atualiza automaticamente conforme você marca os medicamentos.</p>
+            </div>
+        </section>
+
+        <!-- Dynamic Schedule Section -->
+        <section id="schedule-section">
+            <div class="flex items-center justify-between mb-6">
+                <div>
+                    <h2 class="text-2xl font-bold text-teal-800">Sua Rotina de Hoje</h2>
+                    <p class="text-gray-600 text-sm">Organizado por período para facilitar a visualização de múltiplas doses.</p>
+                </div>
+                <button onclick="resetDay()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm transition shadow-sm">
+                    <i class="fas fa-undo mr-1"></i> Reiniciar Dia
+                </button>
+            </div>
+
+            <!-- Time Slots Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+                
+                <!-- Morning Slot -->
+                <div class="bg-white rounded-xl shadow-lg overflow-hidden flex flex-col h-full border-t-4 border-yellow-400">
+                    <div class="bg-yellow-50 p-4 border-b border-yellow-100">
+                        <h3 class="font-bold text-yellow-800 flex items-center">
+                            <i class="fas fa-sun mr-2 text-xl"></i> Manhã
+                        </h3>
+                        <p class="text-xs text-yellow-600">Ideal para jejum e pós-café</p>
+                    </div>
+                    <div id="list-morning" class="p-4 space-y-3 flex-grow bg-white min-h-[200px]">
+                        <!-- Items injected by JS -->
+                        <p class="text-gray-400 text-sm italic text-center py-4">Nenhum medicamento cadastrado.</p>
+                    </div>
+                </div>
+
+                <!-- Lunch Slot -->
+                <div class="bg-white rounded-xl shadow-lg overflow-hidden flex flex-col h-full border-t-4 border-orange-400">
+                    <div class="bg-orange-50 p-4 border-b border-orange-100">
+                        <h3 class="font-bold text-orange-800 flex items-center">
+                            <i class="fas fa-utensils mr-2 text-xl"></i> Almoço
+                        </h3>
+                        <p class="text-xs text-orange-600">Junto ou após a refeição</p>
+                    </div>
+                    <div id="list-lunch" class="p-4 space-y-3 flex-grow bg-white min-h-[200px]">
+                        <!-- Items injected by JS -->
+                         <p class="text-gray-400 text-sm italic text-center py-4">Nenhum medicamento cadastrado.</p>
+                    </div>
+                </div>
+
+                <!-- Afternoon Slot -->
+                <div class="bg-white rounded-xl shadow-lg overflow-hidden flex flex-col h-full border-t-4 border-blue-400">
+                    <div class="bg-blue-50 p-4 border-b border-blue-100">
+                        <h3 class="font-bold text-blue-800 flex items-center">
+                            <i class="fas fa-coffee mr-2 text-xl"></i> Tarde
+                        </h3>
+                        <p class="text-xs text-blue-600">Intervalo entre refeições</p>
+                    </div>
+                    <div id="list-afternoon" class="p-4 space-y-3 flex-grow bg-white min-h-[200px]">
+                        <!-- Items injected by JS -->
+                         <p class="text-gray-400 text-sm italic text-center py-4">Nenhum medicamento cadastrado.</p>
+                    </div>
+                </div>
+
+                <!-- Night Slot -->
+                <div class="bg-white rounded-xl shadow-lg overflow-hidden flex flex-col h-full border-t-4 border-indigo-500">
+                    <div class="bg-indigo-50 p-4 border-b border-indigo-100">
+                        <h3 class="font-bold text-indigo-800 flex items-center">
+                            <i class="fas fa-moon mr-2 text-xl"></i> Noite
+                        </h3>
+                        <p class="text-xs text-indigo-600">Antes de dormir</p>
+                    </div>
+                    <div id="list-night" class="p-4 space-y-3 flex-grow bg-white min-h-[200px]">
+                        <!-- Items injected by JS -->
+                         <p class="text-gray-400 text-sm italic text-center py-4">Nenhum medicamento cadastrado.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Management & Data Entry Section -->
+        <section class="bg-white rounded-xl shadow-md p-6 lg:p-8">
+            <div class="border-b pb-4 mb-6">
+                <h2 class="text-2xl font-bold text-teal-800">Gerenciar Medicamentos</h2>
+                <p class="text-gray-600 mt-1">Adicione novos remédios à tabela. Use este formulário para personalizar a grade acima.</p>
+            </div>
+
+            <form id="add-med-form" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-6">
+                <!-- Name -->
+                <div class="lg:col-span-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Nome do Medicamento</label>
+                    <input type="text" id="input-name" placeholder="Ex: Losartana" required
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition">
+                </div>
+                
+                <!-- Dose -->
+                <div class="lg:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Dose</label>
+                    <input type="text" id="input-dose" placeholder="50mg" 
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition">
+                </div>
+
+                 <!-- Purpose -->
+                 <div class="lg:col-span-3">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Propósito (Para que serve?)</label>
+                    <input type="text" id="input-purpose" placeholder="Ex: Pressão Alta" 
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition">
+                </div>
+
+                <!-- Time Period -->
+                <div class="lg:col-span-3">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Período</label>
+                    <select id="input-period" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition bg-white">
+                        <option value="morning">Manhã</option>
+                        <option value="lunch">Almoço</option>
+                        <option value="afternoon">Tarde</option>
+                        <option value="night">Noite</option>
+                    </select>
+                </div>
+
+                 <!-- Time Specific -->
+                 <div class="lg:col-span-3">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Horário Específico</label>
+                    <input type="time" id="input-time" 
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition">
+                </div>
+
+                <!-- Notes -->
+                <div class="lg:col-span-7">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Observações / Instruções</label>
+                    <input type="text" id="input-notes" placeholder="Ex: Tomar com bastante água, longe do café" 
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition">
+                </div>
+
+                <!-- Submit Button -->
+                <div class="lg:col-span-2 flex items-end">
+                    <button type="submit" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded-lg transition shadow flex items-center justify-center">
+                        <i class="fas fa-plus mr-2"></i> Adicionar
+                    </button>
+                </div>
+            </form>
+        </section>
+
+        <!-- Reference Table (Read Only) -->
+        <section class="bg-white rounded-xl shadow-md p-6 overflow-hidden">
+            <div class="flex justify-between items-center mb-6">
+                <div>
+                    <h2 class="text-2xl font-bold text-teal-800">Tabela Geral de Referência</h2>
+                    <p class="text-gray-600 text-sm">Uma visão consolidada de todos os medicamentos cadastrados.</p>
+                </div>
+                <button onclick="window.print()" class="text-teal-600 hover:text-teal-800 font-medium flex items-center">
+                    <i class="fas fa-print mr-2"></i> Imprimir Tabela
+                </button>
+            </div>
+            
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Medicamento</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Dose</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Propósito</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Horário</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Período</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Observações</th>
+                            <th scope="col" class="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Ação</th>
+                        </tr>
+                    </thead>
+                    <tbody id="reference-table-body" class="bg-white divide-y divide-gray-200">
+                        <!-- Rows injected by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="bg-gray-800 text-gray-300 py-6 mt-auto">
+        <div class="container mx-auto px-4 text-center">
+            <p class="mb-2">MediControl &copy; 2025 - Cuidado e organização para quem você ama.</p>
+            <p class="text-xs text-gray-500">Lembre-se: Este aplicativo é uma ferramenta de auxílio. Sempre siga as orientações médicas oficiais.</p>
+        </div>
+    </footer>
+
+    <!-- JavaScript Logic -->
+    <script>
+        // --- State Management ---
+        const periods = {
+            morning: { label: 'Manhã', icon: 'fa-sun', color: 'yellow' },
+            lunch: { label: 'Almoço', icon: 'fa-utensils', color: 'orange' },
+            afternoon: { label: 'Tarde', icon: 'fa-coffee', color: 'blue' },
+            night: { label: 'Noite', icon: 'fa-moon', color: 'indigo' }
+        };
+
+        // Initial Data - Simulating the "Source Report" example data
+        let medications = [
+            { id: 1, name: 'Losartana', dose: '50 mg', purpose: 'Pressão Alta', period: 'morning', time: '07:00', notes: 'Tomar com água, longe do café', taken: false },
+            { id: 2, name: 'Atenolol', dose: '25 mg', purpose: 'Coração', period: 'morning', time: '07:00', notes: '', taken: false },
+            { id: 3, name: 'Omeprazol', dose: '20 mg', purpose: 'Estômago', period: 'morning', time: '06:30', notes: '30 minutos antes do café', taken: false },
+            { id: 4, name: 'Vitamina D', dose: '1000 UI', purpose: 'Suplemento', period: 'morning', time: '08:30', notes: '', taken: false },
+            { id: 5, name: 'Cálcio', dose: '500 mg', purpose: 'Ossos', period: 'morning', time: '09:00', notes: '', taken: false },
+            { id: 6, name: 'AAS', dose: '100 mg', purpose: 'Coração', period: 'morning', time: '07:00', notes: 'Após café', taken: false }, // Added to demonstrate 6+ meds
+            { id: 7, name: 'Metformina', dose: '500 mg', purpose: 'Diabetes', period: 'lunch', time: '12:30', notes: 'Tomar junto com a refeição', taken: false },
+            { id: 8, name: 'Sinvastatina', dose: '20 mg', purpose: 'Colesterol', period: 'night', time: '21:00', notes: '', taken: false }
+        ];
+
+        let adherenceChart = null;
+
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            updateDate();
+            renderApp();
+            initChart();
+        });
+
+        function updateDate() {
+            const now = new Date();
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            document.getElementById('current-date').textContent = now.toLocaleDateString('pt-BR', options);
+        }
+
+        // --- Chart Logic ---
+        function initChart() {
+            const ctx = document.getElementById('adherenceChart').getContext('2d');
+            adherenceChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Tomados', 'Pendentes'],
+                    datasets: [{
+                        data: [0, 1], // Initial dummy data
+                        backgroundColor: ['#059669', '#F59E0B'], // Green-600, Amber-500
+                        borderWidth: 0,
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 20
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    let value = context.raw;
+                                    let total = context.chart._metasets[context.datasetIndex].total;
+                                    let percentage = Math.round((value / total) * 100) + '%';
+                                    return label + value + ' (' + percentage + ')';
+                                }
+                            }
+                        }
+                    },
+                    cutout: '70%'
+                }
+            });
+            updateChart();
+        }
+
+        function updateChart() {
+            if (!adherenceChart) return;
+
+            const taken = medications.filter(m => m.taken).length;
+            const pending = medications.length - taken;
+
+            adherenceChart.data.datasets[0].data = [taken, pending];
+            
+            // Visual feedback for completion
+            if (pending === 0 && medications.length > 0) {
+                 adherenceChart.data.datasets[0].backgroundColor = ['#059669', '#E5E7EB']; // All green
+            } else {
+                 adherenceChart.data.datasets[0].backgroundColor = ['#059669', '#F59E0B'];
+            }
+            
+            adherenceChart.update();
+            
+            // Update Stats Counters
+            document.getElementById('total-meds-count').textContent = medications.length;
+            document.getElementById('pending-count').textContent = pending;
+            document.getElementById('taken-count').textContent = taken;
+        }
+
+        // --- Rendering Logic ---
+        function renderApp() {
+            renderScheduleLists();
+            renderReferenceTable();
+            updateChart();
+        }
+
+        function renderScheduleLists() {
+            // Clear lists
+            ['morning', 'lunch', 'afternoon', 'night'].forEach(p => {
+                document.getElementById(`list-${p}`).innerHTML = '';
+            });
+
+            // Sort medications by time
+            const sortedMeds = [...medications].sort((a, b) => {
+                if (!a.time) return 1;
+                if (!b.time) return -1;
+                return a.time.localeCompare(b.time);
+            });
+
+            let counts = { morning: 0, lunch: 0, afternoon: 0, night: 0 };
+
+            sortedMeds.forEach(med => {
+                const container = document.getElementById(`list-${med.period}`);
+                if (container) {
+                    counts[med.period]++;
+                    const card = document.createElement('div');
+                    card.className = `flex items-start p-3 rounded-lg border transition-all duration-200 ${med.taken ? 'bg-green-50 border-green-200 opacity-75' : 'bg-white border-gray-100 hover:border-teal-300 shadow-sm'}`;
+                    
+                    card.innerHTML = `
+                        <div class="flex-shrink-0 mt-1">
+                            <input type="checkbox" id="check-${med.id}" ${med.taken ? 'checked' : ''} 
+                                onchange="toggleMed(${med.id})"
+                                class="w-5 h-5 text-teal-600 rounded border-gray-300 focus:ring-teal-500 cursor-pointer">
+                        </div>
+                        <div class="ml-3 flex-grow">
+                            <div class="flex justify-between items-start">
+                                <label for="check-${med.id}" class="font-bold text-gray-800 cursor-pointer ${med.taken ? 'line-through text-gray-500' : ''}">
+                                    ${med.name}
+                                </label>
+                                <span class="bg-gray-100 text-gray-700 text-xs font-semibold px-2 py-1 rounded">
+                                    ${med.time || '--:--'}
+                                </span>
+                            </div>
+                            <p class="text-sm text-gray-600 ${med.taken ? 'line-through' : ''}">${med.dose} • ${med.purpose}</p>
+                            ${med.notes ? `<p class="text-xs text-amber-600 mt-1"><i class="fas fa-info-circle mr-1"></i>${med.notes}</p>` : ''}
+                        </div>
+                    `;
+                    container.appendChild(card);
+                }
+            });
+
+            // Handle empty states
+            ['morning', 'lunch', 'afternoon', 'night'].forEach(p => {
+                if (counts[p] === 0) {
+                    document.getElementById(`list-${p}`).innerHTML = '<p class="text-gray-400 text-sm italic text-center py-4">Nenhum medicamento.</p>';
+                }
+            });
+        }
+
+        function renderReferenceTable() {
+            const tbody = document.getElementById('reference-table-body');
+            tbody.innerHTML = '';
+
+            medications.forEach(med => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${med.name}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${med.dose}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${med.purpose}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${med.time || '-'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-${periods[med.period].color}-100 text-${periods[med.period].color}-800">
+                            ${periods[med.period].label}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 text-sm text-gray-500 max-w-xs truncate" title="${med.notes}">${med.notes}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <button onclick="deleteMed(${med.id})" class="text-red-600 hover:text-red-900">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // --- Interactions ---
+
+        function toggleMed(id) {
+            const med = medications.find(m => m.id === id);
+            if (med) {
+                med.taken = !med.taken;
+                renderApp();
+            }
+        }
+
+        function resetDay() {
+            if(confirm("Deseja desmarcar todos os medicamentos de hoje?")) {
+                medications.forEach(m => m.taken = false);
+                renderApp();
+            }
+        }
+
+        function deleteMed(id) {
+            if(confirm("Tem certeza que deseja remover este medicamento da lista?")) {
+                medications = medications.filter(m => m.id !== id);
+                renderApp();
+            }
+        }
+
+        // Form Handling
+        document.getElementById('add-med-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            
+            const name = document.getElementById('input-name').value;
+            const dose = document.getElementById('input-dose').value;
+            const purpose = document.getElementById('input-purpose').value;
+            const period = document.getElementById('input-period').value;
+            const time = document.getElementById('input-time').value;
+            const notes = document.getElementById('input-notes').value;
+
+            if (name && period) {
+                const newMed = {
+                    id: Date.now(),
+                    name,
+                    dose,
+                    purpose,
+                    period,
+                    time,
+                    notes,
+                    taken: false
+                };
+
+                medications.push(newMed);
+                renderApp();
+                
+                // Reset form
+                e.target.reset();
+                alert('Medicamento adicionado com sucesso!');
+            }
+        });
+
+    </script>
+</body>
+</html>
